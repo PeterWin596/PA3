@@ -1,40 +1,54 @@
 import sys
-from collections import Counter
+from collections import defaultdict
 
-# Function to load answers from a file
-def load_answers(file_path):
-    answers = []
-    with open(file_path, 'r', encoding='utf-8') as f:
+def read_answers(file):
+    """Reads the answer file and returns a dictionary {instance_id: sense}."""
+    answers = {}
+    with open(file, 'r') as f:
         for line in f:
-            if "<answer senseid=" in line:
-                sense = line.split('<answer senseid="')[1].split('"')[0]
-                answers.append(sense)
+            if "senseid=" in line:
+                instance = line.split("instance=\"")[1].split("\"")[0]
+                sense = line.split("senseid=\"")[1].split("\"")[0]
+                answers[instance] = sense
     return answers
 
-if __name__ == "__main__":
-    predicted_file = sys.argv[1]
-    key_file = sys.argv[2]
-    
-    predicted_senses = load_answers(predicted_file)
-    key_senses = load_answers(key_file)
-    
-    if len(predicted_senses) != len(key_senses):
-        print("Error: Mismatch in number of lines between predicted and key files.")
-        sys.exit(1)
-    
-    total = len(key_senses)
-    correct = sum(p == k for p, k in zip(predicted_senses, key_senses))
+def compute_accuracy(predictions, gold_standard):
+    """Computes accuracy and confusion matrix."""
+    correct = 0
+    total = len(gold_standard)
+    confusion_matrix = defaultdict(lambda: defaultdict(int))
+
+    for instance, true_sense in gold_standard.items():
+        pred_sense = predictions.get(instance, "UNKNOWN")
+        if pred_sense == true_sense:
+            correct += 1
+        confusion_matrix[true_sense][pred_sense] += 1
+
     accuracy = correct / total * 100
-    
-    # Confusion matrix
-    confusion_matrix = Counter()
-    unique_senses = set(key_senses + predicted_senses)
-    
-    for p, k in zip(predicted_senses, key_senses):
-        confusion_matrix[(k, p)] += 1
-    
+    return accuracy, confusion_matrix
+
+def print_confusion_matrix(confusion_matrix):
+    """Prints confusion matrix."""
+    senses = sorted(set(confusion_matrix.keys()) | set(k for v in confusion_matrix.values() for k in v))
+    print("\nConfusion Matrix:")
+    print("\t" + "\t".join(senses))
+    for true_sense in senses:
+        row = [str(confusion_matrix[true_sense][pred_sense]) for pred_sense in senses]
+        print(f"{true_sense}\t" + "\t".join(row))
+
+def main():
+    if len(sys.argv) != 3:
+        print("Usage: python3 scorer.py my-line-answers.txt line-key.txt")
+        sys.exit(1)
+
+    pred_file, key_file = sys.argv[1], sys.argv[2]
+    predictions = read_answers(pred_file)
+    gold_standard = read_answers(key_file)
+
+    accuracy, confusion_matrix = compute_accuracy(predictions, gold_standard)
+
     print(f"Accuracy: {accuracy:.2f}%")
-    print("Confusion Matrix:")
-    for k in unique_senses:
-        for p in unique_senses:
-            print(f"{k} -> {p}: {confusion_matrix[(k, p)]}")
+    print_confusion_matrix(confusion_matrix)
+
+if __name__ == "__main__":
+    main()
